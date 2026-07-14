@@ -19,7 +19,7 @@ pip install leadgen-ai
 ### From GitHub
 
 ```bash
-pip install git+https://github.com/YOUR_USERNAME/leadgen-ai.git
+pip install git+https://github.com/Gyan4589/leadgen-ai.git
 ```
 
 ### From this folder (developers)

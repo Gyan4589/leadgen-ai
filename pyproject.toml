@@ -32,9 +32,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/YOUR_GITHUB_USERNAME/leadgen-ai"
-Repository = "https://github.com/YOUR_GITHUB_USERNAME/leadgen-ai"
-Issues = "https://github.com/YOUR_GITHUB_USERNAME/leadgen-ai/issues"
+Homepage = "https://github.com/Gyan4589/leadgen-ai"
+Repository = "https://github.com/Gyan4589/leadgen-ai"
+Issues = "https://github.com/Gyan4589/leadgen-ai/issues"
 
 [project.scripts]
 leadgen = "main:main"
