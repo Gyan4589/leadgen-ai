@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "leadgen-ai"
+version = "1.1.0"
+description = "Search any keywords and generate real sales leads with AI (Grok + web search)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+  { name = "Gyan Ranjan" }
+]
+keywords = ["leads", "sales", "cli", "ai", "grok", "lead-generation"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: End Users/Desktop",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Office/Business",
+  "Topic :: Utilities",
+]
+dependencies = [
+  "openai>=1.60.0",
+  "python-dotenv>=1.0.0",
+  "pydantic>=2.0.0",
+  "rich>=13.0.0",
+  "typer>=0.12.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/YOUR_GITHUB_USERNAME/leadgen-ai"
+Repository = "https://github.com/YOUR_GITHUB_USERNAME/leadgen-ai"
+Issues = "https://github.com/YOUR_GITHUB_USERNAME/leadgen-ai/issues"
+
+[project.scripts]
+leadgen = "main:main"
+lead_agent = "main:main"
+
+[tool.setuptools]
+py-modules = ["main"]
+packages = ["agent"]
+
+[tool.setuptools.package-data]
+agent = ["py.typed"]

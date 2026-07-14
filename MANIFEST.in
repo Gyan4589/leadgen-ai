@@ -1,0 +1,14 @@
+include README.md
+include LICENSE
+include requirements.txt
+include .env.example
+include leadgen.cmd
+include run.ps1
+include run.bat
+include install.ps1
+recursive-include agent *.py
+prune output
+prune .venv
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude .env
