@@ -4,7 +4,7 @@ APP_NAME = "LeadGen AI"
 APP_TAGLINE = "Search any keywords → get real sales leads (any AI API)"
 DEVELOPER = "Gyan Ranjan"
 CREDIT = f"Developed by {DEVELOPER}"
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 
 
 def banner_lines() -> str:

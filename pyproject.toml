@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "leadgen-ai"
-version = "1.2.0"
+version = "1.2.1"
 description = "Search any keywords and generate real sales leads. Works with any AI API (OpenAI, Groq, Gemini, DeepSeek, OpenRouter, …). Developed by Gyan Ranjan."
 readme = "README.md"
 requires-python = ">=3.10"
