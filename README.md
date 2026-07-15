@@ -2,143 +2,100 @@
 
 **Search any keywords → get real sales leads**
 
-**Developed by Gyan Ranjan**
+**Works with any AI API** — OpenAI, Groq, Gemini, DeepSeek, OpenRouter, Mistral, Together, custom OpenAI-compatible servers, and more.
 
-Powered by Grok + live web search. Type simple keywords (or a full product pitch) and get scored companies, contacts (when public), and outreach drafts.
+**Developed by Gyan Ranjan**
 
 ---
 
-## Install (anyone)
-
-### From PyPI (after you publish)
+## Install
 
 ```bash
 pip install leadgen-ai
 ```
 
-### From GitHub
+From GitHub:
 
 ```bash
 pip install git+https://github.com/Gyan4589/leadgen-ai.git
 ```
 
-### From this folder (developers)
+---
 
-```powershell
-cd lead_agent
-pip install .
-# or Windows helper:
-.\install.ps1
-```
+## Setup (any API key)
 
-Then:
+Create a `.env` or set an environment variable. **Use the key for the provider you choose:**
 
 ```bash
+# OpenAI
+set OPENAI_API_KEY=sk-...
+
+# or Groq (fast + free tier)
+set GROQ_API_KEY=gsk_...
+
+# or Google Gemini
+set GEMINI_API_KEY=...
+
+# or DeepSeek / OpenRouter / Mistral
+set DEEPSEEK_API_KEY=...
+set OPENROUTER_API_KEY=...
+set MISTRAL_API_KEY=...
+
+# or generic
+set LEADGEN_API_KEY=...
+set LEADGEN_BASE_URL=https://api.openai.com/v1
+set LEADGEN_MODEL=gpt-4o
+```
+
+---
+
+## Usage
+
+```bash
+# list popular models
+leadgen models
+
+# search keywords
+leadgen search "dental clinics Mumbai" -n 8
+
+# pick a famous model
+leadgen search "real estate agents Texas" -m gpt-4o -n 5
+leadgen search "AI startups Bangalore" -m gemini-2.0-flash
+leadgen search "gyms Delhi" -p groq -m llama-3.3-70b
+leadgen search "HR SaaS USA" -m claude-3.5-sonnet   # via OpenRouter key
+
+# custom OpenAI-compatible endpoint (Ollama, vLLM, Azure proxy, etc.)
+leadgen search "cafes NYC" --provider custom --base-url http://localhost:11434/v1 --api-key ollama -m llama3.2
+
+# interactive
 leadgen
-leadgen search "dental clinics Mumbai" -n 5
-```
-
-### API key (required)
-
-Get a key at [console.x.ai](https://console.x.ai), then:
-
-```bash
-# Windows PowerShell
-$env:XAI_API_KEY = "your_key"
-
-# Or create a .env file next to where you run:
-# XAI_API_KEY=your_key
 ```
 
 ---
 
-## Quick start (Windows, local project)
+## Popular models
 
-```powershell
-cd "$env:USERPROFILE\OneDrive\Desktop\papa\lead_agent"
-.\install.ps1
+| Shortcut | Provider |
+|----------|----------|
+| `gpt-4o`, `gpt-4o-mini`, `gpt-4.1`, `o3-mini` | OpenAI |
+| `gemini-2.0-flash`, `gemini-1.5-pro` | Google |
+| `llama-3.3-70b` | Groq |
+| `deepseek-chat` | DeepSeek |
+| `mistral-large` | Mistral |
+| `claude-3.5-sonnet`, `claude-sonnet-4` | OpenRouter |
+
+```bash
+leadgen models
 ```
-
-Open a **new** PowerShell:
-
-```powershell
-leadgen
-leadgen search "dental clinics Mumbai" -n 5
-lead_agent
-```
-
-Or without install:
-
-```powershell
-.\run.ps1
-.\leadgen.cmd search "gyms Delhi" -n 5
-```
-
-**Publish this CLI for the world?** See [PUBLISH.md](./PUBLISH.md).
-
-You’ll be asked for keywords, e.g.:
-
-- `dental clinics Mumbai`
-- `real estate agents Texas`
-- `AI startups Bangalore`
-- `corporate gifting companies USA`
-
-Or pass keywords directly:
-
-```powershell
-.\run.ps1 -Keywords "gyms Delhi" -Count 10
-.\run.ps1 -Keywords "HR SaaS SMB" -Geo "United States" -Count 8
-```
-
-Double-click **`run.bat`** for the same interactive flow.
 
 ---
 
-## Setup
+## How it works
 
-```powershell
-cd lead_agent
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-copy .env.example .env
-```
-
-Set `XAI_API_KEY` in `.env` ([console.x.ai](https://console.x.ai)), **or** stay signed into Grok Build/CLI (`~\.grok\auth.json` is used automatically).
-
----
-
-## Commands
-
-### Keyword search (main)
-
-```bash
-python main.py search "dental clinics Mumbai" -n 10
-python main.py search "logistics companies India" --geo "India" -n 8
-python main.py "AI startups Bangalore" -n 5
-```
-
-### Interactive
-
-```bash
-python main.py
-# or
-python main.py chat
-```
-
-### Product / offer mode
-
-```bash
-python main.py find "We sell invoice automation to logistics SMBs" -n 8
-```
-
-### Merge all runs
-
-```bash
-python main.py merge-all
-```
-
-→ `output/all_leads.csv` (deduped master list)
+1. You type **keywords**  
+2. Live **web search** finds public company pages  
+3. Your chosen **LLM** scores leads + drafts outreach  
+4. Exports **CSV / JSON** to `output/`
 
 ---
 
@@ -147,31 +104,21 @@ python main.py merge-all
 | Flag | Meaning |
 |------|---------|
 | `-n / --count` | Max leads |
+| `-m / --model` | Model name or famous shortcut |
+| `-p / --provider` | openai, groq, gemini, deepseek, openrouter, mistral, custom |
+| `--base-url` | Custom API base URL |
+| `--api-key` | Pass key on CLI (prefer env for safety) |
 | `-g / --geo` | Geography filter |
-| `-i / --industry` | Industry filter |
-| `-s / --size` | Company size |
-| `--min-score` | Drop weak leads (default 40 for search) |
-| `--no-refine` | Faster, skip polish |
-| `--out DIR` | Output folder |
-
----
-
-## Output
-
-Each run saves:
-
-- `output/leads_YYYYMMDD_HHMMSS.csv`
-- `output/leads_YYYYMMDD_HHMMSS.json`
-- `output/all_leads.csv` (all runs combined)
+| `--min-score` | Drop weak leads |
 
 ---
 
 ## Ethics
 
-- Public web sources only  
+- Public sources only  
 - No invented private emails  
 - Verify before outreach  
-- Respect local spam / privacy laws  
+- Respect spam / privacy laws  
 
 ---
 
@@ -179,4 +126,4 @@ Each run saves:
 
 **LeadGen AI**  
 **Developed by Gyan Ranjan**  
-Built with xAI Grok
+https://github.com/Gyan4589/leadgen-ai

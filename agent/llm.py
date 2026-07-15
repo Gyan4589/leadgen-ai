@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Optional, Type, TypeVar
+from typing import Any, Type, TypeVar
 
 from openai import OpenAI
 from pydantic import BaseModel
@@ -13,7 +13,7 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class LLM:
-    """Thin wrapper around the xAI Responses API (OpenAI-compatible)."""
+    """OpenAI-compatible client — works with OpenAI, Groq, Gemini, DeepSeek, OpenRouter, xAI, custom."""
 
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -30,26 +30,28 @@ class LLM:
         use_web_search: bool = False,
         temperature: float = 0.3,
     ) -> str:
-        tools: Optional[list[dict[str, Any]]] = None
-        if use_web_search:
-            tools = [{"type": "web_search"}]
-
+        # use_web_search is handled upstream via agent/search.py for all providers
+        _ = use_web_search
         kwargs: dict[str, Any] = {
             "model": self.settings.model,
-            "input": [
+            "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
             "temperature": temperature,
         }
-        if tools:
-            kwargs["tools"] = tools
+        # Some reasoning models reject temperature
+        try:
+            response = self.client.chat.completions.create(**kwargs)
+        except Exception:
+            kwargs.pop("temperature", None)
+            response = self.client.chat.completions.create(**kwargs)
 
-        response = self.client.responses.create(**kwargs)
-        text = getattr(response, "output_text", None)
-        if text:
-            return text.strip()
-        return _extract_output_text(response).strip()
+        choice = response.choices[0].message
+        content = choice.content
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+        return str(content or "").strip()
 
     def complete_json(
         self,
@@ -77,31 +79,14 @@ class LLM:
         return schema.model_validate(data)
 
 
-def _extract_output_text(response: Any) -> str:
-    """Fallback parser if output_text is missing on the SDK object."""
-    chunks: list[str] = []
-    for item in getattr(response, "output", None) or []:
-        for part in getattr(item, "content", None) or []:
-            text = getattr(part, "text", None)
-            if text:
-                chunks.append(text)
-            elif isinstance(part, dict) and part.get("text"):
-                chunks.append(part["text"])
-    if chunks:
-        return "\n".join(chunks)
-    return str(response)
-
-
 def _parse_json(text: str) -> Any:
     text = text.strip()
-    # Strip markdown fences if the model still adds them
     fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
     if fence:
         text = fence.group(1).strip()
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        # Best-effort: first {...} or [...]
         for pattern in (r"\{[\s\S]*\}", r"\[[\s\S]*\]"):
             match = re.search(pattern, text)
             if match:

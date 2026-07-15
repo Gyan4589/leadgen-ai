@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """LeadGen AI — search any keywords, get real sales leads.
 
+Works with any OpenAI-compatible API (OpenAI, Groq, Gemini, DeepSeek, OpenRouter, …).
 Developed by Gyan Ranjan.
 """
 
@@ -19,19 +20,32 @@ from agent.branding import APP_NAME, CREDIT, VERSION, banner_lines
 from agent.config import Settings
 from agent.export import export_all, merge_all_csvs, load_csv_rows
 from agent.models import LeadRunResult
+from agent.models_catalog import list_models_help
 from agent.pipeline import LeadAgent
 
 app = typer.Typer(
     name="leadgen",
-    help=f"{APP_NAME} — type any keywords to generate sales leads. {CREDIT}.",
+    help=f"{APP_NAME} — keywords → sales leads. Any AI API. {CREDIT}.",
     add_completion=False,
     no_args_is_help=False,
 )
 console = Console()
 
+# Shared optional AI options (Typer doesn't support inheritance easily — pass via context)
+_AI_OPTS: dict = {}
 
-def _banner() -> None:
-    console.print(Panel.fit(banner_lines(), border_style="cyan", title=APP_NAME))
+
+def _banner(settings: Settings | None = None) -> None:
+    extra = ""
+    if settings:
+        extra = (
+            f"\n[dim]Provider:[/] {settings.provider}  "
+            f"[dim]Model:[/] {settings.model}\n"
+            f"[dim]API:[/] {settings.base_url}"
+        )
+    console.print(
+        Panel.fit(banner_lines() + extra, border_style="cyan", title=APP_NAME)
+    )
 
 
 def _print_icp(icp) -> None:
@@ -100,9 +114,20 @@ def _print_leads(leads) -> None:
         )
 
 
-def _get_agent() -> LeadAgent:
+def _get_agent(
+    *,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> LeadAgent:
     try:
-        settings = Settings.from_env()
+        settings = Settings.from_env(
+            provider=provider or _AI_OPTS.get("provider"),
+            model=model or _AI_OPTS.get("model"),
+            base_url=base_url or _AI_OPTS.get("base_url"),
+            api_key=api_key or _AI_OPTS.get("api_key"),
+        )
     except RuntimeError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(1) from exc
@@ -137,8 +162,35 @@ def root(
         "-k",
         help="Search keywords (e.g. 'dental clinics Delhi', 'HR SaaS US').",
     ),
+    provider: Optional[str] = typer.Option(
+        None,
+        "--provider",
+        "-p",
+        help="AI provider: openai, groq, gemini, deepseek, openrouter, mistral, xai, custom",
+    ),
+    model: Optional[str] = typer.Option(
+        None,
+        "--model",
+        "-m",
+        help="Model name, e.g. gpt-4o, gemini-2.0-flash, llama-3.3-70b, claude-3.5-sonnet",
+    ),
+    base_url: Optional[str] = typer.Option(
+        None,
+        "--base-url",
+        help="Custom OpenAI-compatible API base URL",
+    ),
+    api_key: Optional[str] = typer.Option(
+        None,
+        "--api-key",
+        help="API key (or set OPENAI_API_KEY / any provider key in env)",
+    ),
 ):
-    """LeadGen AI by Gyan Ranjan — search keywords to generate leads."""
+    """LeadGen AI by Gyan Ranjan — any AI API, keyword lead search."""
+    _AI_OPTS["provider"] = provider
+    _AI_OPTS["model"] = model
+    _AI_OPTS["base_url"] = base_url
+    _AI_OPTS["api_key"] = api_key
+
     if ctx.invoked_subcommand is not None:
         return
     if keywords:
@@ -153,10 +205,27 @@ def root(
             no_refine=False,
             no_export=False,
             out_dir=None,
+            provider=provider,
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
         )
         return
-    # No args → interactive keyword search
     ctx.invoke(chat)
+
+
+@app.command("models")
+def models_cmd():
+    """List popular models and supported providers."""
+    console.print(Panel.fit(banner_lines(), border_style="cyan"))
+    console.print(list_models_help())
+    console.print(
+        "\n[dim]Example:[/]\n"
+        "  set OPENAI_API_KEY=sk-...\n"
+        "  leadgen search \"dental clinics Mumbai\" -m gpt-4o -n 5\n"
+        "  leadgen search \"gyms Delhi\" -p groq -m llama-3.3-70b\n"
+        f"\n[magenta]{CREDIT}[/]"
+    )
 
 
 @app.command("search")
@@ -175,10 +244,14 @@ def search(
     no_refine: bool = typer.Option(False, "--no-refine", help="Skip polish pass (faster)."),
     no_export: bool = typer.Option(False, "--no-export", help="Do not write CSV/JSON."),
     out_dir: Optional[Path] = typer.Option(None, "--out", help="Output directory."),
+    provider: Optional[str] = typer.Option(None, "--provider", "-p"),
+    model: Optional[str] = typer.Option(None, "--model", "-m"),
+    base_url: Optional[str] = typer.Option(None, "--base-url"),
+    api_key: Optional[str] = typer.Option(None, "--api-key"),
 ):
     """Search any keywords and generate real business leads."""
-    agent = _get_agent()
-    _banner()
+    agent = _get_agent(provider=provider, model=model, base_url=base_url, api_key=api_key)
+    _banner(agent.settings)
     console.print(f"[bold]Keywords:[/] {keywords}\n")
 
     with console.status("[bold green]Understanding keywords & building search profile..."):
@@ -192,7 +265,7 @@ def search(
     _print_icp(icp)
 
     with console.status(
-        "[bold green]Searching the web for matching leads (may take a minute)..."
+        "[bold green]Searching the web & generating leads (may take a minute)..."
     ):
         batch = agent.research_by_keywords(
             keywords,
@@ -220,11 +293,8 @@ def search(
 
 @app.command()
 def find(
-    offer: str = typer.Argument(
-        ...,
-        help="Product pitch or keywords (same engine as search).",
-    ),
-    count: int = typer.Option(10, "--count", "-n", help="Max leads to return."),
+    offer: str = typer.Argument(..., help="Product pitch or keywords."),
+    count: int = typer.Option(10, "--count", "-n"),
     industry: Optional[str] = typer.Option(None, "--industry", "-i"),
     geo: Optional[str] = typer.Option(None, "--geo", "-g"),
     company_size: Optional[str] = typer.Option(None, "--size", "-s"),
@@ -233,13 +303,16 @@ def find(
     no_refine: bool = typer.Option(False, "--no-refine"),
     no_export: bool = typer.Option(False, "--no-export"),
     out_dir: Optional[Path] = typer.Option(None, "--out"),
+    provider: Optional[str] = typer.Option(None, "--provider", "-p"),
+    model: Optional[str] = typer.Option(None, "--model", "-m"),
+    base_url: Optional[str] = typer.Option(None, "--base-url"),
+    api_key: Optional[str] = typer.Option(None, "--api-key"),
 ):
     """Find leads from a product offer or free-text description."""
-    agent = _get_agent()
-    _banner()
+    agent = _get_agent(provider=provider, model=model, base_url=base_url, api_key=api_key)
+    _banner(agent.settings)
     console.print(f"[dim]Query:[/] {offer}\n")
 
-    # Use keyword path — works for both short keywords and long offers
     extra_bits = extra or ""
     query = f"{offer}\n{extra_bits}".strip()
     with console.status("[bold green]Building profile from your query..."):
@@ -308,8 +381,8 @@ def merge_all(
 @app.command("chat")
 def chat():
     """Interactive: type any keywords, get leads."""
-    _get_agent()
-    _banner()
+    agent = _get_agent()
+    _banner(agent.settings)
     console.print(
         Panel.fit(
             "[bold]Type any keywords[/] to find leads.\n"
@@ -318,7 +391,8 @@ def chat():
             "  • real estate agents Texas\n"
             "  • AI startups Bangalore\n"
             "  • corporate gifting companies USA\n"
-            f"\n[dim]{CREDIT}[/]",
+            f"\n[dim]Works with OpenAI, Groq, Gemini, DeepSeek, OpenRouter, …[/]\n"
+            f"[dim]{CREDIT}[/]",
             border_style="cyan",
             title="Keyword Lead Search",
         )
@@ -345,12 +419,14 @@ def chat():
         no_refine=False,
         no_export=False,
         out_dir=None,
+        provider=_AI_OPTS.get("provider"),
+        model=_AI_OPTS.get("model"),
+        base_url=_AI_OPTS.get("base_url"),
+        api_key=_AI_OPTS.get("api_key"),
     )
 
 
 def main() -> None:
-    # Bare keywords: python main.py "dental clinics Delhi"
-    # or: python main.py search "dental clinics Delhi"
     if len(sys.argv) > 1:
         first = sys.argv[1]
         known = {
@@ -358,10 +434,17 @@ def main() -> None:
             "find",
             "chat",
             "merge-all",
+            "models",
             "--help",
             "-h",
             "--keywords",
             "-k",
+            "--provider",
+            "-p",
+            "--model",
+            "-m",
+            "--base-url",
+            "--api-key",
         }
         if first not in known and not first.startswith("-"):
             sys.argv.insert(1, "search")

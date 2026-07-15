@@ -5,6 +5,7 @@ from .export import export_all
 from .llm import LLM
 from .models import IdealCustomerProfile, Lead, LeadBatch, LeadRunResult
 from .config import Settings
+from .search import multi_search
 
 
 ICP_SYSTEM = """You are a senior B2B sales strategist and ICP designer.
@@ -23,46 +24,41 @@ Rules:
 - Never invent private contact data.
 """
 
-KEYWORD_RESEARCH_SYSTEM = f"""You are an expert lead research agent with live web search.
+KEYWORD_RESEARCH_SYSTEM = f"""You are an expert lead research agent.
 Product: LeadGen AI — {CREDIT}.
 
-The user typed SEARCH KEYWORDS. Find REAL companies / businesses that match those keywords.
+You will receive SEARCH KEYWORDS plus LIVE WEB SEARCH RESULTS.
+Find REAL companies / businesses that match those keywords using the search results.
 
 Hard rules:
-1. Use web search heavily. Keywords can be anything: industry, city, niche, product, role, etc.
-2. Expand the keywords into multiple web searches (directories, "top companies", Google-style queries, LinkedIn company results, chamber of commerce, Clutch, Yelp business lists, Crunchbase, news).
-3. Prefer real, currently operating businesses with public websites.
-4. Only include facts grounded in public sources.
-5. Do NOT invent email addresses, phone numbers, or private personal data.
-6. contact_email: only if clearly public. Otherwise null.
-7. contact_name / contact_title: only if publicly listed. Otherwise null.
-8. For each lead, cite a source_url you used.
-9. Score fit_score 0-100 based on how well the company matches the keywords + quality of public data.
-10. Write a short personalized outreach_subject and outreach_email (plain text, 80-120 words)
-    relevant to the keyword intent (partnership, sales, service offer — infer reasonably).
-11. next_action: concrete CRM step.
-12. Prefer quality over quantity. No duplicate companies.
-13. Return JSON only matching the schema.
-14. research_notes: what you searched and any caveats.
+1. Prefer companies that appear in the provided web search results.
+2. Prefer real, currently operating businesses with public websites.
+3. Only include facts grounded in the search snippets/URLs or clearly public knowledge.
+4. Do NOT invent email addresses, phone numbers, or private personal data.
+5. contact_email: only if clearly public. Otherwise null.
+6. contact_name / contact_title: only if publicly listed. Otherwise null.
+7. For each lead, cite a source_url from the search results when possible.
+8. Score fit_score 0-100 based on keyword match + quality of public data.
+9. Write a short personalized outreach_subject and outreach_email (plain text, 80-120 words).
+10. next_action: concrete CRM step.
+11. Prefer quality over quantity. No duplicate companies.
+12. Return JSON only matching the schema.
+13. research_notes: what you used + caveats.
 """
 
-RESEARCH_SYSTEM = f"""You are an expert B2B lead research agent with live web search.
+RESEARCH_SYSTEM = f"""You are an expert B2B lead research agent.
 Product: LeadGen AI — {CREDIT}.
 
-Your job: find REAL companies that match the Ideal Customer Profile.
+Find REAL companies that match the Ideal Customer Profile using the live web results.
 
 Hard rules:
-1. Use web search. Prefer real, currently operating companies with public websites.
-2. Only include facts you can ground in public sources.
-3. Do NOT invent email addresses, phone numbers, or private personal data.
-4. contact_email: only if clearly public. Otherwise null.
-5. contact_name / contact_title: only if publicly listed. Otherwise null.
-6. For each lead, cite a source_url you used.
-7. Score fit_score 0-100 based on ICP match + buying signals.
-8. Write a short, personalized outreach_subject and outreach_email (plain text, 80-120 words).
-9. next_action should be a concrete CRM step.
-10. Prefer quality over quantity. Skip weak fits.
-11. Return JSON only matching the schema.
+1. Prefer companies from the web search results.
+2. Only include facts grounded in public sources / search snippets.
+3. Do NOT invent private contact data.
+4. contact_email / personal details only if clearly public; else null.
+5. Cite source_url per lead when possible.
+6. Score fit_score 0-100. Write short outreach email + next_action.
+7. Return JSON only matching the schema.
 """
 
 ENRICH_SYSTEM = f"""You are a B2B outbound copywriter and lead qualifier.
@@ -129,7 +125,6 @@ class LeadAgent:
         industry: str | None = None,
         company_size: str | None = None,
     ) -> LeadBatch:
-        """Direct keyword → live web search → leads (main path)."""
         min_score = self.settings.min_score if min_score is None else min_score
         filters = []
         if geo:
@@ -143,23 +138,42 @@ class LeadAgent:
         if filters:
             filter_block = "\nFilters:\n- " + "\n- ".join(filters)
 
+        queries = [keywords.strip()]
+        if geo:
+            queries.append(f"{keywords} {geo}")
+        if industry:
+            queries.append(f"{keywords} {industry}")
+        queries.extend(
+            [
+                f"best {keywords} companies list",
+                f"{keywords} directory",
+                f"top {keywords}",
+            ]
+        )
+
+        web_brief = ""
+        if self.settings.use_web_search:
+            web_brief = multi_search(queries[:6], max_per_query=5)
+
         user = f"""Search keywords: {keywords.strip()}
 {filter_block}
+
+LIVE WEB SEARCH RESULTS:
+{web_brief}
 
 Find up to {count} high-quality real business leads matching these keywords.
 
 Requirements:
-- Use web search with several query variations of the keywords
 - Return at most {count} leads
 - fit_score should be >= {min_score} when possible; drop weak leads
 - No duplicate companies
-- research_notes: what you searched + caveats
+- research_notes: what you used + caveats
 """
         batch = self.llm.complete_json(
             KEYWORD_RESEARCH_SYSTEM,
             user,
             LeadBatch,
-            use_web_search=True,
+            use_web_search=False,
             temperature=0.25,
         )
         batch.leads = [
@@ -175,26 +189,27 @@ Requirements:
         min_score: int | None = None,
     ) -> LeadBatch:
         min_score = self.settings.min_score if min_score is None else min_score
-        queries = "\n".join(f"- {q}" for q in icp.search_queries[:8])
+        queries = list(icp.search_queries[:8]) or [icp.product_summary]
+        web_brief = multi_search(queries, max_per_query=5) if self.settings.use_web_search else ""
         user = f"""Find up to {count} high-quality B2B leads.
 
 ICP JSON:
 {icp.model_dump_json(indent=2)}
 
-Suggested search queries:
-{queries}
+LIVE WEB SEARCH RESULTS:
+{web_brief}
 
 Requirements:
 - Return at most {count} leads
 - Each fit_score should be >= {min_score} when possible; drop weak leads
 - Prefer diversity across companies (no duplicates)
-- Research notes: brief summary of how you searched and caveats
+- Research notes: brief summary + caveats
 """
         batch = self.llm.complete_json(
             RESEARCH_SYSTEM,
             user,
             LeadBatch,
-            use_web_search=True,
+            use_web_search=False,
             temperature=0.25,
         )
         batch.leads = [
@@ -242,11 +257,9 @@ Keep leads with fit_score >= {min_score}. Improve outreach personalization.
         refine: bool = True,
         export: bool = True,
     ) -> LeadRunResult:
-        """Primary UX: type any keywords → get leads."""
         min_score = self.settings.min_score if min_score is None else min_score
         keywords = keywords.strip()
 
-        # Lightweight ICP for export / context (no extra web call in research path)
         icp = self.build_icp(
             keywords,
             industry=industry,
@@ -291,7 +304,6 @@ Keep leads with fit_score >= {min_score}. Improve outreach personalization.
         refine: bool = True,
         export: bool = True,
     ) -> LeadRunResult:
-        """Full offer/product path (still supported)."""
         min_score = self.settings.min_score if min_score is None else min_score
 
         icp = self.build_icp(
